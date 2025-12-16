@@ -43,7 +43,7 @@ except ImportError:  # Python < 3.8
 
 _PACKAGE_NAME = "python_directory_tree_printer"  # matches pyproject.toml
 # Optional fallback module-defined version if metadata not available
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 DEFAULT_IGNORE_NAMES: set[str] = {
     ".git",
