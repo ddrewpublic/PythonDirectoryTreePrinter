@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "python_directory_tree_printer"                 # private name
+version = "0.1.0"
+description = "A tiny, stdlib-only directory tree printer."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Daniel Drew" }]
+# Keep it clearly private
+license = { text = "Proprietary - Private Use Only" }
+classifiers = ["Private :: Do Not Upload"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
