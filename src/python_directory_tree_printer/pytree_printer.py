@@ -25,8 +25,10 @@ Output style:
 
 from __future__ import annotations
 
+import fnmatch
 import sys
 from pathlib import Path
+from typing import Iterable
 
 # --- version metadata -------------------------------------------------------
 # comment: compat import for Python 3.7–3.10+
@@ -43,8 +45,26 @@ _PACKAGE_NAME = "python_directory_tree_printer"  # matches pyproject.toml
 # Optional fallback module-defined version if metadata not available
 __version__ = "0.1.0"
 
+DEFAULT_IGNORE_NAMES: set[str] = {
+    ".git",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".idea",
+    ".venv",
+    ".gitignore",
+}
 
-def get_package_version() -> str:
+DEFAULT_IGNORE_GLOBS: tuple[str, ...] = (
+    "*.pyc",
+    "*.pyo",
+    "*.pyd",
+    ".DS_Store",
+    ".gitignore",
+)
+
+
+def _get_package_version() -> str:
     """Return the version string for this logging utility.
 
     Resolution order:
@@ -65,69 +85,113 @@ def get_package_version() -> str:
         return __version__
 
 
-def print_tree(root: Path, max_depth: int = 2) -> None:
+def _norm_rel(path: Path) -> str:
+    """Return a normalized, POSIX-style relative path string."""
+    return path.as_posix().lstrip("./")
+
+
+def _should_ignore(
+        *,
+        root: Path,
+        path: Path,
+        ignore_names: set[str],
+        ignore_globs: Iterable[str],
+        ignore_paths: set[Path],
+) -> bool:
+    """
+    Decide whether `path` should be ignored.
+
+    Matching rules:
+    - Exact name match against `ignore_names`
+    - Relative path match against `ignore_paths` (relative to `root`)
+    - Glob match against:
+        - basename (e.g. "*.pyc")
+        - relative path (e.g. "build/**", "**/.venv/**")
+    """
+    name = path.name
+    if name in ignore_names:
+        return True
+
+    try:
+        rel = path.relative_to(root)
+    except ValueError:
+        # If it's not under root for some reason, don't ignore by path rules.
+        rel = path
+
+    if rel in ignore_paths:
+        return True
+
+    rel_s = _norm_rel(rel)
+    for pat in ignore_globs:
+        # Match either the filename or the relative path
+        if fnmatch.fnmatch(name, pat) or fnmatch.fnmatch(rel_s, pat):
+            return True
+
+    return False
+
+
+def print_tree(
+        root: Path,
+        max_depth: int = 2,
+        *,
+        ignore_names: set[str] | None = None,
+        ignore_globs: Iterable[str] = (),
+        ignore_paths: Iterable[Path] = (),
+        include_files: bool = True,
+) -> None:
     """
     Print a directory tree for `root` up to `max_depth` levels deep.
 
     Args:
         root: Directory to print.
         max_depth: Maximum depth to traverse.
-            Depth is counted from `root`:
-              - depth 0: root itself (always printed)
-              - depth 1: root's direct children
-              - depth 2: grandchildren
-              - etc.
+        ignore_names: Exact directory/file names to skip (e.g. {".git", "__pycache__"}).
+        ignore_globs: Glob patterns to skip (e.g. ("*.pyc", "dist/**", "**/.venv/**")).
+        ignore_paths: Paths (relative to root) to skip (e.g. [Path("node_modules")]).
+        include_files: If False, prints directories only.
 
     Notes:
-        - This function is intentionally conservative and avoids following symlinks.
-        - It filters out a couple of common "junk" directories.
+        - Does not follow symlinks.
+        - Directories are listed before files, then alphabetical.
     """
     root = root.resolve()
 
-    # Print the root folder name as the header line.
+    ignore_names = set(DEFAULT_IGNORE_NAMES if ignore_names is None else ignore_names)
+    ignore_globs = tuple(DEFAULT_IGNORE_GLOBS) + tuple(ignore_globs)
+    ignore_paths_set = {Path(p) for p in ignore_paths}
+
     print(f"{root.name}/")
 
     def walk(dir_path: Path, prefix: str, depth: int) -> None:
-        """
-        Recursive helper that prints entries in `dir_path`.
-
-        Args:
-            dir_path: The directory currently being printed.
-            prefix: The indentation + vertical bars used to align children.
-            depth: Current depth relative to the root.
-        """
-        # Stop recursion once we hit the configured depth.
         if depth >= max_depth:
             return
 
-        # Gather directory entries, skipping common clutter.
-        # Sorting rule:
-        #   - directories first, then files
-        #   - alphabetical within each group
-        entries = sorted(
-            [
-                p
-                for p in dir_path.iterdir()
-                if p.name not in {".git", "__pycache__", ".mypy_cache", ".pytest_cache"}
-            ],
-            key=lambda p: (p.is_file(), p.name.lower()),
-        )
+        entries = []
+        for p in dir_path.iterdir():
+            if _should_ignore(
+                    root=root,
+                    path=p,
+                    ignore_names=ignore_names,
+                    ignore_globs=ignore_globs,
+                    ignore_paths=ignore_paths_set,
+            ):
+                continue
+            if not include_files and p.is_file():
+                continue
+            entries.append(p)
+
+        entries.sort(key=lambda p: (p.is_file(), p.name.lower()))
 
         for i, p in enumerate(entries):
-            # Determine whether this is the last entry so we can draw the right connector.
             is_last = i == len(entries) - 1
             connector = "└── " if is_last else "├── "
-
-            # Add "/" suffix for directories to make the output easier to scan.
             name = p.name + ("/" if p.is_dir() else "")
             print(prefix + connector + name)
 
-            # Recurse into subdirectories, extending the prefix so the tree lines align.
             if p.is_dir():
                 child_prefix = prefix + ("    " if is_last else "│   ")
                 walk(p, child_prefix, depth + 1)
 
-    # Start recursion from the root with no prefix at depth 0.
     walk(root, prefix="", depth=0)
 
 
@@ -137,6 +201,7 @@ def main(argv: list[str] | None = None) -> int:
     depth = int(argv[1]) if len(argv) > 1 else 2
     print_tree(target, max_depth=depth)
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

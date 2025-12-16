@@ -85,7 +85,12 @@ LLMFilePromptWrapper/
 from pathlib import Path
 from pytree_printer import print_tree
 
-print_tree(Path("LLMFilePromptWrapper"), max_depth=2)
+print_tree(
+    Path("."),
+    max_depth=4,
+    ignore_globs=("dist/**", "build/**", "**/.venv/**", "*.log"),
+    ignore_paths=(Path("node_modules"), Path("src/generated")),
+)
 ```
 
 ## Installation
