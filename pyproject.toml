@@ -15,3 +15,6 @@ classifiers = ["Private :: Do Not Upload"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.scripts]
+pytree = "python_directory_tree_printer.pytree_printer:main"

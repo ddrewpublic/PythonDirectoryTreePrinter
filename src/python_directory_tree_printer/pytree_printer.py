@@ -131,11 +131,12 @@ def print_tree(root: Path, max_depth: int = 2) -> None:
     walk(root, prefix="", depth=0)
 
 
-if __name__ == "__main__":
-    # CLI parsing kept intentionally simple:
-    # - arg1: path (default ".")
-    # - arg2: depth (default 2)
-    target = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".")
-    depth = int(sys.argv[2]) if len(sys.argv) > 2 else 2
-
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    target = Path(argv[0]) if len(argv) > 0 else Path(".")
+    depth = int(argv[1]) if len(argv) > 1 else 2
     print_tree(target, max_depth=depth)
+    return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())
