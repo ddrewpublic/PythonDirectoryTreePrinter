@@ -1,6 +1,8 @@
 # Python Directory Tree Printer
 
-A tiny, stdlib-first directory tree printer that outputs a readable tree diagram of a folder. Like `tree(1)`, but in Python - useful when you're on a machine where `tree` isn't installed, or you want something you can install into a project without too much fuss.
+A tiny, stdlib-first directory tree printer that outputs a readable tree diagram of a folder. Like `tree(1)`, but in
+Python - useful when you're on a machine where `tree` isn't installed, or you want something you can install into a
+project without too much fuss.
 
 ## Features
 
@@ -8,10 +10,10 @@ A tiny, stdlib-first directory tree printer that outputs a readable tree diagram
 - Appends `/` to directory names
 - Limits traversal depth
 - Skips common junk directories by default:
-  - `.git`
-  - `__pycache__`
-  - `.mypy_cache`
-  - `.pytest_cache`
+    - `.git`
+    - `__pycache__`
+    - `.mypy_cache`
+    - `.pytest_cache`
 - **Optional Markdown output** using collapsible `<details><summary>` blocks
 - Includes a simple version lookup helper (`get_package_version()`), with safe fallbacks
 
@@ -19,7 +21,7 @@ A tiny, stdlib-first directory tree printer that outputs a readable tree diagram
 
 - Python 3.8+ (recommended)
 - Python 3.7 can work **if** you install the backport:
-  - `importlib-metadata`
+    - `importlib-metadata`
 
 > If you're on Python 3.8+, `importlib.metadata` is in the standard library.
 
@@ -60,6 +62,29 @@ from pytree_printer import print_tree, print_tree_md
 print_tree(Path("LLMFilePromptWrapper"), max_depth=2)
 print_tree_md(Path("LLMFilePromptWrapper"), max_depth=2)
 ```
+
+## Installation
+
+```bash
+echo "utilities-custom-logger @ git+ssh://git@github.com/ddrewpublic/pythondirectorytreeprinter.git@v0.1.0" | tee -a requirements.txt
+pip install -r requirements.txt
+```
+
+## Upgrade
+
+```bash
+pip install --upgrade --force-reinstall --no-cache-dir "git+ssh://git@github.com/ddrewpublic/pythondirectorytreeprinter.git@main"
+```
+
+## Versioning
+
+`get_package_version()` tries to read installed distribution metadata:
+
+- Distribution name: python_directory_tree_printer (matches pyproject.toml)
+- Fallback: module constant `__version__ = "0.1.0"`
+
+If the package isn't installed (e.g., you're just running the file directly), it won't crash - it'll return the fallback
+version.
 
 ## Notes
 
