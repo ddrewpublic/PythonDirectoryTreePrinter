@@ -1,14 +1,17 @@
 """
 pytree_printer.py
 
-A tiny, stdlib-only directory tree printer.
+An stdlib-only directory tree printer.
 
 Why this exists:
 - Linux has the `tree` command, but it may not be installed everywhere.
 - This script produces a readable "tree diagram" using only Python's standard library.
+- It can also emit **collapsible Markdown** using `<details><summary>` blocks,
+  suitable for GitHub, GitLab, and most Markdown renderers.
 
 Usage:
     python pytree_printer.py [PATH] [DEPTH]
+    python pytree_printer.py [PATH] [DEPTH] --md
 
 Examples:
     python pytree_printer.py
@@ -17,11 +20,22 @@ Examples:
     python pytree_printer.py LLMFilePromptWrapper 3
         # Print the tree for ./LLMFilePromptWrapper, depth 3.
 
-Output style:
-- Uses box-drawing characters (├──, └──) to show hierarchy.
-- Appends "/" to directory names.
-- Skips common noise directories like .git and __pycache__ by default.
+    python pytree_printer.py . 3 --md > tree.md
+        # Emit collapsible Markdown instead of a plain tree.
+
+Output styles:
+- Tree mode:
+    - Uses box-drawing characters (├──, └──) to show hierarchy.
+    - Appends "/" to directory names.
+- Markdown mode:
+    - Uses nested <details><summary> blocks.
+    - Preserves tree-style indentation visually.
+
+Defaults:
+- Skips common noise directories like .git and __pycache__.
+- Directories are listed before files, then alphabetically.
 """
+
 
 from __future__ import annotations
 
@@ -43,7 +57,7 @@ except ImportError:  # Python < 3.8
 
 _PACKAGE_NAME = "python_directory_tree_printer"  # matches pyproject.toml
 # Optional fallback module-defined version if metadata not available
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 DEFAULT_IGNORE_NAMES: set[str] = {
     ".git",
@@ -65,15 +79,13 @@ DEFAULT_IGNORE_GLOBS: tuple[str, ...] = (
 
 
 def _get_package_version() -> str:
-    """Return the version string for this logging utility.
+    """Return the installed package version if available.
 
-    Resolution order:
-        1. Installed package metadata for `utilities_custom_logger`
-           (from pyproject.toml).
-        2. Local ``__version__`` constant as a fallback.
+    Attempts to read the version from installed package metadata.
+    Falls back to the local ``__version__`` constant if unavailable.
 
     Returns:
-        str: Semantic version string, e.g. "0.3.0".
+        str: Semantic version string (e.g. "0.3.0").
     """
     try:
         return _pkg_version(_PACKAGE_NAME)
@@ -86,7 +98,14 @@ def _get_package_version() -> str:
 
 
 def _norm_rel(path: Path) -> str:
-    """Return a normalized, POSIX-style relative path string."""
+    """Normalize a path to a POSIX-style relative string.
+
+    Args:
+        path: Path to normalize.
+
+    Returns:
+        str: Relative path using forward slashes, without leading "./".
+    """
     return path.as_posix().lstrip("./")
 
 
@@ -98,15 +117,24 @@ def _should_ignore(
         ignore_globs: Iterable[str],
         ignore_paths: set[Path],
 ) -> bool:
-    """
-    Decide whether `path` should be ignored.
+    """Determine whether a path should be excluded from output.
 
     Matching rules:
-    - Exact name match against `ignore_names`
-    - Relative path match against `ignore_paths` (relative to `root`)
-    - Glob match against:
-        - basename (e.g. "*.pyc")
-        - relative path (e.g. "build/**", "**/.venv/**")
+    - Exact name match against ``ignore_names``
+    - Relative path match against ``ignore_paths`` (relative to ``root``)
+    - Glob match against either:
+        - the basename (e.g. "*.pyc")
+        - the relative path (e.g. "**/.venv/**")
+
+    Args:
+        root: Root directory of the tree walk.
+        path: Candidate path to test.
+        ignore_names: Exact filenames or directory names to skip.
+        ignore_globs: Glob patterns to skip.
+        ignore_paths: Explicit relative paths to skip.
+
+    Returns:
+        bool: True if the path should be ignored.
     """
     name = path.name
     if name in ignore_names:
@@ -130,6 +158,83 @@ def _should_ignore(
     return False
 
 
+def print_tree_md(
+        root: Path,
+        max_depth: int = 2,
+        *,
+        ignore_names: set[str] | None = None,
+        ignore_globs: Iterable[str] = (),
+        ignore_paths: Iterable[Path] = (),
+        include_files: bool = True,
+) -> None:
+    """Print a directory tree as collapsible Markdown.
+
+    Output uses nested ``<details><summary>`` blocks, suitable for
+    GitHub, GitLab, and most HTML-capable Markdown renderers.
+
+    Args:
+        root: Directory to print.
+        max_depth: Maximum traversal depth.
+        ignore_names: Exact directory/file names to skip.
+        ignore_globs: Glob patterns to skip.
+        ignore_paths: Paths (relative to root) to skip.
+        include_files: If False, print directories only.
+    """
+    root = root.resolve()
+
+    ignore_names = set(DEFAULT_IGNORE_NAMES if ignore_names is None else ignore_names)
+    ignore_globs = tuple(DEFAULT_IGNORE_GLOBS) + tuple(ignore_globs)
+    ignore_paths_set = {Path(p) for p in ignore_paths}
+
+    print(f"<details><summary>{root.name}/</summary>")
+
+    def walk(dir_path: Path, prefix: str, depth: int) -> None:
+        if depth >= max_depth:
+            return
+
+        entries: list[Path] = []
+        for p in dir_path.iterdir():
+            if _should_ignore(
+                    root=root,
+                    path=p,
+                    ignore_names=ignore_names,
+                    ignore_globs=ignore_globs,
+                    ignore_paths=ignore_paths_set,
+            ):
+                continue
+            if not include_files and p.is_file():
+                continue
+            entries.append(p)
+
+        entries.sort(key=lambda p: (p.is_file(), p.name.lower()))
+
+        for i, p in enumerate(entries):
+            is_last = i == len(entries) - 1
+            connector = "└── " if is_last else "├── "
+            name = p.name + ("/" if p.is_dir() else "")
+
+            # convert tree prefix to nbsp
+            md_prefix = (
+                prefix
+                .replace("│", "&nbsp;")
+                .replace(" ", "&nbsp;")
+            )
+
+            print(
+                f"{'    ' * (depth + 1)}"
+                f"<details><summary>{md_prefix}{connector}{name}</summary>"
+            )
+
+            if p.is_dir():
+                child_prefix = prefix + ("    " if is_last else "│   ")
+                walk(p, child_prefix, depth + 1)
+
+            print(f"{'    ' * (depth + 1)}</details>")
+
+    walk(root, prefix="", depth=0)
+    print("</details>")
+
+
 def print_tree(
         root: Path,
         max_depth: int = 2,
@@ -139,20 +244,19 @@ def print_tree(
         ignore_paths: Iterable[Path] = (),
         include_files: bool = True,
 ) -> None:
-    """
-    Print a directory tree for `root` up to `max_depth` levels deep.
+    """Print a directory tree using box-drawing characters.
 
     Args:
         root: Directory to print.
-        max_depth: Maximum depth to traverse.
-        ignore_names: Exact directory/file names to skip (e.g. {".git", "__pycache__"}).
-        ignore_globs: Glob patterns to skip (e.g. ("*.pyc", "dist/**", "**/.venv/**")).
-        ignore_paths: Paths (relative to root) to skip (e.g. [Path("node_modules")]).
-        include_files: If False, prints directories only.
+        max_depth: Maximum traversal depth.
+        ignore_names: Exact directory/file names to skip.
+        ignore_globs: Glob patterns to skip.
+        ignore_paths: Paths (relative to root) to skip.
+        include_files: If False, print directories only.
 
     Notes:
         - Does not follow symlinks.
-        - Directories are listed before files, then alphabetical.
+        - Directories are listed before files, then alphabetically.
     """
     root = root.resolve()
 
@@ -196,10 +300,32 @@ def print_tree(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI entry point.
+
+    Parses command-line arguments and dispatches to the appropriate
+    output mode (tree or Markdown).
+
+    Args:
+        argv: Optional argument list (defaults to ``sys.argv``).
+
+    Returns:
+        int: Process exit code.
+    """
     argv = sys.argv[1:] if argv is None else argv
+
+    fmt = "tree"
+    if "--md" in argv:
+        fmt = "md"
+        argv.remove("--md")
+
     target = Path(argv[0]) if len(argv) > 0 else Path(".")
     depth = int(argv[1]) if len(argv) > 1 else 2
-    print_tree(target, max_depth=depth)
+
+    if fmt == "md":
+        print_tree_md(target, max_depth=depth)
+    else:
+        print_tree(target, max_depth=depth)
+
     return 0
 
 
